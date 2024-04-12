@@ -1,8 +1,6 @@
 import ast
 import redis
-from trieve_client import AuthenticatedClient
-from trieve_client.models import CreateChunkData, ReturnCreatedChunk, ErrorResponseBody
-from trieve_client.api.chunk import create_chunk
+import requests
 from datetime import datetime
 
 # Connect to Redis
@@ -13,28 +11,19 @@ redis_client = redis.Redis(
     password="thisredispasswordisverysecureandcomplex",
 )
 
-trieve_client = AuthenticatedClient(
-    base_url="https://api.trieve.ai",
-    prefix="",
-    token="tr-6b3fb3MXYs799XuAryTfGzJZmGffN6S3",
-).with_headers(
-    {
-        "TR-Organization": "2ccba845-f621-4c86-abe0-bdfa6ff8e637",
-    }
-)
+num_to_pop = 100
+api_key = "tr-********************************"
+dataset_id = "********-****-****-****-************"
+api_url = "https://api.trieve.ai/api"
 
-
-while True:
-    redis_resp = redis_client.blpop("hn")
-    item = ast.literal_eval(redis_resp[1].decode("utf-8"))
-    # Check if item ID is already present
+def deserialize_to_dict(item):
+    item = ast.literal_eval(item.decode("utf-8"))
     if (
         item
         and "type" in item
         and "deleted" not in item
         and "dead" not in item
     ):
-        print(item.get("id"))
         row = {
             "by": item.get("by"),
             "descendants": item.get("descendants"),
@@ -51,7 +40,16 @@ while True:
             "type": item.get("type"),
             "url": item.get("url"),
         }
-        data = CreateChunkData(
+
+        maybe_time = row.get("time")
+        try:
+            stamp = None if maybe_time is None else datetime.fromtimestamp(maybe_time).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        except:
+            stamp = None
+
+        data = dict(
             chunk_html=row["title"] if row["title"] else row["text"],
             link=row["url"],
             metadata={
@@ -66,16 +64,22 @@ while True:
                 "type": row.get("type"),
             },
             tracking_id=str(row.get("id")),
-            time_stamp=datetime.fromtimestamp(row.get("time")).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            weight=int(row.get("score") if row.get("score") else 0),
+            time_stamp=stamp,
+            weight=int(row.get("score") if row.get("score") else 0)
         )
-        chunk_response = create_chunk.sync(
-            tr_dataset="346e6cfd-2914-4e09-8738-cd341ddf96db",
-            client=trieve_client,
-            body=data,
-        )
-        if type(chunk_response) == ErrorResponseBody:
-            print(f"Failed {chunk_response.message}")
-            exit(1)
+        return data
+
+    return None
+
+while True:
+    redis_resp = redis_client.lpop("hn", num_to_pop)
+    # Check if item ID is already present
+    chunks = list(map(deserialize_to_dict, redis_resp))
+    url = f"{api_url}/chunk"
+    print(url)
+    chunk_response = requests.post(
+        url,
+        headers={ "Content-Type": "application/json","TR-Dataset": dataset_id, "Authorization": api_key },
+        json=chunks
+    )
+    print(chunk_response)
