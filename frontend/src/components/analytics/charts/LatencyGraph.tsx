@@ -11,7 +11,10 @@ import {
 } from "../../../types";
 import { getLatency } from "../api/analytics";
 
-export const parseCustomDateString = (dateString: string) => {
+export const parseCustomDateString = (
+  dateString: string,
+  keepUTC?: boolean,
+) => {
   const [datePart, timePart] = dateString.split(" ");
   let [year, month, day] = datePart.split("-");
   let [hour, minute, second] = timePart.split(":");
@@ -23,7 +26,10 @@ export const parseCustomDateString = (dateString: string) => {
   minute = minute.padStart(2, "0");
   wholeSec = wholeSec.padStart(2, "0");
 
-  const isoString = `${year}-${month}-${day}T${hour}:${minute}:${wholeSec}Z`;
+  let isoString = `${year}-${month}-${day}T${hour}:${minute}:${wholeSec}`;
+  if (!keepUTC) {
+    isoString += "Z";
+  }
 
   return new Date(isoString);
 };
@@ -38,15 +44,15 @@ interface LatencyGraphProps {
 export const LatencyGraph = (props: LatencyGraphProps) => {
   const [canvasElement, setCanvasElement] = createSignal<HTMLCanvasElement>();
   const [latencyPoints, setLatencyPoints] = createSignal<LatencyDatapoint[]>(
-    []
+    [],
   );
   let chartInstance: Chart | null = null;
-  createEffect(async () => {
-    let results = await getLatency(
-      props.params.filter,
-      props.params.granularity
+  createEffect(() => {
+    getLatency(props.params.filter, props.params.granularity).then(
+      (results) => {
+        setLatencyPoints(results);
+      },
     );
-    setLatencyPoints(results);
   });
 
   createEffect(() => {
@@ -67,8 +73,8 @@ export const LatencyGraph = (props: LatencyGraphProps) => {
           labels: [],
           datasets: [
             {
-              borderColor: "purple",
-              pointBackgroundColor: "purple",
+              borderColor: "rgba(255, 102, 0, 0.9)",
+              pointBackgroundColor: "rgba(255, 102, 0, 0.9)",
               backgroundColor: "rgba(128, 0, 128, 0.1)", // Light purple background
               borderWidth: 1,
               label: "Time",
@@ -116,14 +122,14 @@ export const LatencyGraph = (props: LatencyGraphProps) => {
     }
 
     // @ts-expect-error library types not updated
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+
     chartInstance.options.scales["x"].time.minUnit = props.params.granularity;
     // Update the chart data
     chartInstance.data.labels = data.map(
-      (point) => new Date(parseCustomDateString(point.time_stamp))
+      (point) => new Date(parseCustomDateString(point.time_stamp, true)),
     );
     chartInstance.data.datasets[0].data = data.map(
-      (point) => point.average_latency
+      (point) => point.average_latency,
     );
     chartInstance.update();
   });

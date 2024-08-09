@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Accessor,
   Show,
@@ -266,21 +264,21 @@ export interface FilterItemProps {
 
 export const FilterItem = (props: FilterItemProps) => {
   const [curFilter, setCurFilter] = createSignal<Filter>(
-    props.initialFilter ?? defaultFilter
+    props.initialFilter ?? defaultFilter,
   );
   const [tempFilterMode, setTempFilterMode] = createSignal<string>(
     props.initialFilter?.geo_radius
       ? "geo_radius"
       : props.initialFilter?.range
-      ? "range"
-      : props.initialFilter?.date_range
-      ? "date_range"
-      : props.initialFilter?.match
-      ? "match"
-      : "match"
+        ? "range"
+        : props.initialFilter?.date_range
+          ? "date_range"
+          : props.initialFilter?.match
+            ? "match"
+            : "match",
   );
   const [tempFilterField, setTempFilterField] = createSignal<string>(
-    props.initialFilter?.field ?? ""
+    props.initialFilter?.field ?? "",
   );
   const [location, setLocation] = createSignal({
     lat: props.initialFilter?.geo_radius?.center?.lat ?? null,
@@ -303,7 +301,7 @@ export const FilterItem = (props: FilterItemProps) => {
   });
 
   const [match, setMatch] = createSignal<(string | number)[] | null>(
-    props.initialFilter?.match ?? null
+    props.initialFilter?.match ?? null,
   );
 
   createEffect(() => {

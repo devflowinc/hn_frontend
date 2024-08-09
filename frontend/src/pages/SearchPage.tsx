@@ -1,3 +1,6 @@
+/* eslint-disable no-constant-binary-expression */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import {
   For,
   Match,
@@ -54,30 +57,46 @@ export const SearchPage = () => {
   const defaultHighlightDelimiters = [" ", "-", "_", ".", ","];
 
   let abortController: AbortController | null = null;
-  const [authorNames, setAuthorNames] = createSignal(
-    urlParams.get("authorNames")?.split(",") ?? []
+  const [matchAnyAuthorNames, setMatchAnyAuthorNames] = createSignal(
+    urlParams
+      .get("matchAnyAuthorNames")
+      ?.split(",")
+      .map((name) => name.trim())
+      .filter((name) => name !== "") ?? [],
+  );
+  const [matchNoneAuthorNames, setMatchNoneAuthorNames] = createSignal(
+    urlParams
+      .get("matchNoneAuthorNames")
+      ?.split(",")
+      .map((name) => name.trim())
+      .filter((name) => name !== "") ?? [],
+  );
+  const [popularityFilters, setPopularityFilters] = createSignal<any>(
+    urlParams.get("popularityFilters")
+      ? JSON.parse(urlParams.get("popularityFilters") as string)
+      : {},
   );
   const [selectedStoryType, setSelectedStoryType] = createSignal(
-    urlParams.get("storyType") ?? "story"
+    urlParams.get("storyType") ?? "story",
   );
   const [sortBy, setSortBy] = createSignal(
-    urlParams.get("sortby") ?? "Relevance"
+    urlParams.get("sortby") ?? "Relevance",
   );
   const [dateRange, setDateRange] = createSignal<string>(
-    urlParams.get("dateRange") ?? "all"
+    urlParams.get("dateRange") ?? "all",
   );
   const [stories, setStories] = createSignal<Story[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [query, setQuery] = createSignal(urlParams.get("q") ?? "");
   const [searchType, setSearchType] = createSignal(
-    urlParams.get("searchType") ?? "fulltext"
+    urlParams.get("searchType") ?? "fulltext",
   );
   const [recommendType, setRecommendType] = createSignal("semantic");
   const [page, setPage] = createSignal(Number(urlParams.get("page") ?? "1"));
   const [algoliaLink, setAlgoliaLink] = createSignal("");
   const [latency, setLatency] = createSignal<number | null>(null);
   const [positiveRecStory, setPositiveRecStory] = createSignal<Story | null>(
-    null
+    null,
   );
   const [recommendedStories, setRecommendedStories] = createSignal<Story[]>([]);
   const [showRecModal, setShowRecModal] = createSignal(false);
@@ -94,7 +113,7 @@ export const SearchPage = () => {
       urlParams.get("highlight_delimiters")?.split(",") ??
       defaultHighlightDelimiters,
     highlightThreshold: parseFloat(
-      urlParams.get("highlight_threshold") ?? "0.85"
+      urlParams.get("highlight_threshold") ?? "0.85",
     ),
     highlightMaxLength: parseInt(urlParams.get("highlight_max_length") ?? "50"),
     highlightMaxNum: parseInt(urlParams.get("highlight_max_num") ?? "50"),
@@ -122,6 +141,20 @@ export const SearchPage = () => {
     }
   });
 
+  const queryFiltersRemoved = createMemo(() => {
+    return query()
+      .replace(/author:-\w+/g, "")
+      .replace(/author:\w+/g, "")
+      .replace(/by:-\w+/g, "")
+      .replace(/by:\w+/g, "")
+      .replace(/story:\d+/g, "")
+      .replace(/points>:\d+/g, "")
+      .replace(/points<:\d+/g, "")
+      .replace(/comments>:\d+/g, "")
+      .replace(/comments<:\d+/g, "")
+      .trimStart();
+  });
+
   createEffect(() => {
     setSearchOptions("scoreThreshold", defaultScoreThreshold(searchType()));
   });
@@ -132,7 +165,7 @@ export const SearchPage = () => {
     searchOptions.scoreThreshold &&
       urlParams.set(
         "score_threshold",
-        searchOptions.scoreThreshold?.toString()
+        searchOptions.scoreThreshold?.toString(),
       );
 
     urlParams.set("page_size", searchOptions.pageSize.toString());
@@ -140,29 +173,29 @@ export const SearchPage = () => {
     urlParams.set("rerank_type", searchOptions.rerankType ?? "none");
     urlParams.set(
       "highlight_delimiters",
-      searchOptions.highlightDelimiters.join(",")
+      searchOptions.highlightDelimiters.join(","),
     );
     urlParams.set(
       "highlight_threshold",
-      searchOptions.highlightThreshold.toString()
+      searchOptions.highlightThreshold.toString(),
     );
     urlParams.set(
       "highlight_max_length",
-      searchOptions.highlightMaxLength.toString()
+      searchOptions.highlightMaxLength.toString(),
     );
     urlParams.set(
       "highlight_max_num",
-      searchOptions.highlightMaxNum.toString()
+      searchOptions.highlightMaxNum.toString(),
     );
     urlParams.set("highlight_window", searchOptions.highlightWindow.toString());
     urlParams.set("recency_bias", searchOptions.recencyBias.toString());
     urlParams.set(
       "highlight_results",
-      searchOptions.highlightResults ? "true" : "false"
+      searchOptions.highlightResults ? "true" : "false",
     );
     urlParams.set(
       "use_quote_negated_terms",
-      searchOptions.useQuoteNegatedTerms ? "true" : "false"
+      searchOptions.useQuoteNegatedTerms ? "true" : "false",
     );
 
     if (abortController) {
@@ -172,25 +205,27 @@ export const SearchPage = () => {
     abortController = new AbortController();
     const { signal } = abortController;
 
-    urlParams.set("q", query());
+    urlParams.set("q", queryFiltersRemoved());
     urlParams.set("storyType", selectedStoryType());
-    urlParams.set("authorNames", authorNames().join(","));
+    urlParams.set("matchAnyAuthorNames", matchAnyAuthorNames().join(","));
+    urlParams.set("matchNoneAuthorNames", matchNoneAuthorNames().join(","));
+    urlParams.set("popularityFilters", JSON.stringify(popularityFilters()));
     urlParams.set("sortby", sortBy());
     urlParams.set("dateRange", dateRange());
     urlParams.set("searchType", searchType());
     urlParams.set("page", page().toString());
     setAlgoliaLink(
       `https://hn.algolia.com/?q=${encodeURIComponent(
-        query()
+        queryFiltersRemoved(),
       )}&dateRange=${dateRange()}&sort=by${
         sortBy() == "Relevance" ? "Popularity" : sortBy()
-      }&type=${selectedStoryType()}&page=0&prefix=false`
+      }&type=${selectedStoryType()}&page=0&prefix=false`,
     );
 
     window.history.replaceState(
       {},
       "",
-      `${window.location.pathname}?${urlParams.toString()}`
+      `${window.location.pathname}?${urlParams.toString()}`,
     );
 
     const time_range = dateRangeSwitch(dateRange());
@@ -204,9 +239,97 @@ export const SearchPage = () => {
       sort_by_field = undefined;
     }
 
+    const uncleanedQuery = query();
+    let curAnyAuthorNames = matchAnyAuthorNames();
+    let curNoneAuthorNames = matchNoneAuthorNames();
+    const byNegatedMatches =
+      (uncleanedQuery.match(/by:-\w+/g) as string[]) ?? [];
+    const byNonNegatedMatches =
+      (uncleanedQuery.match(/by:\w+/g) as string[]) ?? [];
+    const authorNegatedMatches =
+      (uncleanedQuery.match(/author:-\w+/g) as string[]) ?? [];
+    const authorNonNegatedMatches =
+      (uncleanedQuery.match(/author:\w+/g) as string[]) ?? [];
+
+    if (byNegatedMatches.length > 0) {
+      curNoneAuthorNames = [
+        ...new Set(
+          [...curNoneAuthorNames, ...byNegatedMatches].map((a) =>
+            a.replace("by:-", "").replace("by:", "").trim(),
+          ),
+        ),
+      ];
+    }
+    if (authorNegatedMatches.length > 0) {
+      curNoneAuthorNames = [
+        ...new Set(
+          [...curNoneAuthorNames, ...authorNegatedMatches].map((a) =>
+            a.replace("author:-", "").replace("author:", "").trim(),
+          ),
+        ),
+      ];
+    }
+
+    if (byNonNegatedMatches.length > 0) {
+      curAnyAuthorNames = [
+        ...new Set(
+          [...curAnyAuthorNames, ...byNonNegatedMatches].map((a) =>
+            a.replace("by:-", "").replace("by:", "").trim(),
+          ),
+        ),
+      ];
+    }
+    if (authorNonNegatedMatches.length > 0) {
+      curAnyAuthorNames = [
+        ...new Set(
+          [...curAnyAuthorNames, ...authorNonNegatedMatches].map((a) =>
+            a.replace("author:-", "").replace("author:", "").trim(),
+          ),
+        ),
+      ];
+    }
+
+    let curNumValues = popularityFilters()["num_value"];
+    const scoreGtMatch = uncleanedQuery.match(/points>\d+/);
+    const scoreLtMatch = uncleanedQuery.match(/points<\d+/);
+    if (scoreGtMatch) {
+      curNumValues = {
+        ...curNumValues,
+        gt: parseInt(scoreGtMatch[0].split(">")[1]),
+      };
+    }
+    if (scoreLtMatch) {
+      curNumValues = {
+        ...curNumValues,
+        lt: parseInt(scoreLtMatch[0].split("<")[1]),
+      };
+    }
+
+    let curNumComments = popularityFilters()["num_comments"];
+    const commentsGtMatch = uncleanedQuery.match(/comments>\d+/);
+    const commentsLtMatch = uncleanedQuery.match(/comments<\d+/);
+    if (commentsGtMatch) {
+      curNumComments = {
+        ...curNumComments,
+        gt: parseInt(commentsGtMatch[0].split(">")[1]),
+      };
+    }
+    if (commentsLtMatch) {
+      curNumComments = {
+        ...curNumComments,
+        lt: parseInt(commentsLtMatch[0].split("<")[1]),
+      };
+    }
+
+    let curStoryID = popularityFilters()["storyID"];
+    const storyIDMatch = uncleanedQuery.match(/story:\d+/);
+    if (storyIDMatch) {
+      curStoryID = parseInt(storyIDMatch[0].split(":")[1]);
+    }
+
     const reqBody = {
-      query: query(),
-      search_type: searchType(),
+      query: queryFiltersRemoved(),
+      search_type: searchType() === "autocomplete" ? "fulltext" : searchType(),
       page: page(),
       highlight_options: {
         highlight_strategy: "exactmatch",
@@ -227,7 +350,17 @@ export const SearchPage = () => {
           : undefined,
       },
       use_quote_negated_terms: searchOptions.useQuoteNegatedTerms,
-      filters: getFilters(selectedStoryType(), time_range, authorNames()),
+      filters: getFilters({
+        dateRange: time_range,
+        selectedStoryType: selectedStoryType(),
+        matchAnyAuthorNames: curAnyAuthorNames,
+        matchNoneAuthorNames: curNoneAuthorNames,
+        gtStoryPoints: curNumValues?.gt,
+        ltStoryPoints: curNumValues?.lt,
+        gtStoryComments: curNumComments?.gt,
+        ltStoryComments: curNumComments?.lt,
+        storyID: curStoryID,
+      }),
       page_size: searchOptions.pageSize,
       score_threshold: searchOptions.scoreThreshold,
     };
@@ -243,7 +376,7 @@ export const SearchPage = () => {
       } as any;
     }
 
-    if (query() === "") {
+    if (queryFiltersRemoved() === "") {
       fetch(`${trieveBaseURL}/chunks/scroll`, {
         method: "POST",
         body: JSON.stringify({
@@ -257,7 +390,17 @@ export const SearchPage = () => {
                 field: "time_stamp",
                 order: "desc",
               },
-          filters: getFilters(selectedStoryType(), time_range, authorNames()),
+          filters: getFilters({
+            dateRange: time_range,
+            selectedStoryType: selectedStoryType(),
+            matchAnyAuthorNames: curAnyAuthorNames,
+            matchNoneAuthorNames: curNoneAuthorNames,
+            gtStoryPoints: curNumValues?.gt,
+            ltStoryPoints: curNumValues?.lt,
+            gtStoryComments: curNumComments?.gt,
+            ltStoryComments: curNumComments?.lt,
+            storyID: curStoryID,
+          }),
           page_size: 30,
         }),
         headers: {
@@ -283,7 +426,8 @@ export const SearchPage = () => {
             } else {
               const html_split_by_newlines = chunk.chunk_html?.split("\n\n");
               let title_split = 0;
-              if (chunk.link) {
+              if (chunk.link && chunk.chunk_html?.includes(chunk.link)) {
+                console.log("link", chunk.link);
                 title_split = 1;
               }
 
@@ -298,7 +442,7 @@ export const SearchPage = () => {
             return {
               title_html,
               body_html,
-              parent_id: chunk.metadata?.parent ?? "",
+              parent_id: (chunk.metadata?.parent ?? "").toString(),
               parent_title: chunk.metadata?.parent_title ?? "",
               url: chunk.link ?? "",
               points: chunk.metadata?.score ?? 0,
@@ -329,7 +473,11 @@ export const SearchPage = () => {
       return;
     }
 
-    fetch(`${trieveBaseURL}/chunk/search`, {
+    let apiPath = "search";
+    if (searchType() === "autocomplete") {
+      apiPath = "autocomplete";
+    }
+    fetch(`${trieveBaseURL}/chunk/${apiPath}`, {
       method: "POST",
       body: JSON.stringify(reqBody),
       headers: {
@@ -368,7 +516,8 @@ export const SearchPage = () => {
             } else {
               const html_split_by_newlines = chunk.chunk_html?.split("\n\n");
               let title_split = 0;
-              if (chunk.link) {
+              if (chunk.link && chunk.chunk_html?.includes(chunk.link)) {
+                console.log("link", chunk.link);
                 title_split = 1;
               }
 
@@ -383,7 +532,7 @@ export const SearchPage = () => {
             return {
               title_html,
               body_html,
-              parent_id: chunk.metadata?.parent ?? "",
+              parent_id: (chunk.metadata?.parent ?? "").toString(),
               parent_title: chunk.metadata?.parent_title ?? "",
               score: score_chunk.score,
               url: chunk.link ?? "",
@@ -422,11 +571,17 @@ export const SearchPage = () => {
       curRecommendType === "SPLADE" ? "fulltext" : curRecommendType;
 
     const time_range = dateRangeSwitch(dateRange());
-    const filters = getFilters(null, time_range, authorNames());
-    filters.must.push({
-      field: "tag_set",
-      match: ["story"],
-    } as any);
+    const filters = getFilters({
+      dateRange: time_range,
+      selectedStoryType: selectedStoryType(),
+      matchAnyAuthorNames: matchAnyAuthorNames(),
+      matchNoneAuthorNames: matchNoneAuthorNames(),
+      gtStoryPoints: popularityFilters()["num_value"]?.gt,
+      ltStoryPoints: popularityFilters()["num_value"]?.lt,
+      gtStoryComments: popularityFilters()["num_comments"]?.gt,
+      ltStoryComments: popularityFilters()["num_comments"]?.lt,
+      storyID: popularityFilters()["storyID"],
+    });
 
     void fetch(trieveBaseURL + `/chunk/recommend`, {
       method: "POST",
@@ -457,7 +612,8 @@ export const SearchPage = () => {
           } else {
             const html_split_by_newlines = chunk.chunk_html?.split("\n\n");
             let title_split = 0;
-            if (chunk.link) {
+            if (chunk.link && chunk.chunk_html?.includes(chunk.link)) {
+              console.log("link", chunk.link);
               title_split = 1;
             }
 
@@ -552,7 +708,7 @@ export const SearchPage = () => {
 
   return (
     <>
-      <main class="bg-[#F6F6F0] sm:bg-hn font-verdana md:m-2 md:w-[85%] mx-auto md:mx-auto text-[13.33px]">
+      <main class="mx-auto bg-[#F6F6F0] font-verdana text-[13.33px] sm:bg-hn md:m-2 md:mx-auto md:w-[85%]">
         <Header setQuery={setQuery} />
         <Filters
           setSearchOptions={setSearchOptions}
@@ -565,9 +721,13 @@ export const SearchPage = () => {
           setDateRange={setDateRange}
           searchType={searchType}
           setSearchType={setSearchType}
-          authorNames={authorNames}
-          setAuthorNames={setAuthorNames}
           latency={latency}
+          matchAnyAuthorNames={matchAnyAuthorNames}
+          setMatchAnyAuthorNames={setMatchAnyAuthorNames}
+          matchNoneAuthorNames={matchNoneAuthorNames}
+          setMatchNoneAuthorNames={setMatchNoneAuthorNames}
+          popularityFilters={popularityFilters}
+          setPopularityFilters={setPopularityFilters}
         />
         <Search
           query={query}
@@ -579,8 +739,10 @@ export const SearchPage = () => {
           <Match when={stories().length === 0}>
             <Switch>
               <Match when={loading()}>
-                <div class="flex justify-center items-center py-2">
-                  <span class="text-xl animate-pulse">Scrolling...</span>
+                <div class="flex items-center justify-center py-2">
+                  <span class="animate-pulse text-xl">
+                    {queryFiltersRemoved() === "" ? "Scrolling" : "Searching"}{" "}
+                  </span>
                 </div>
               </Match>
               <Match when={!loading()}>
@@ -623,8 +785,8 @@ export const SearchPage = () => {
             </div>
           </Match>
         </Switch>
-        <Show when={stories().length > 0 && query() != ""}>
-          <div class="mx-auto py-3 flex items-center space-x-2 justify-center">
+        <Show when={stories().length > 0 && queryFiltersRemoved() != ""}>
+          <div class="mx-auto flex items-center justify-center space-x-2 py-3">
             <PaginationController
               page={page()}
               setPage={setPage}
@@ -635,7 +797,7 @@ export const SearchPage = () => {
         <Footer />
       </main>
       <FullScreenModal show={showRecModal} setShow={setShowRecModal}>
-        <div class="flex flex-col items-center justify-center w-full max-w-[70vw]">
+        <div class="flex w-full max-w-[70vw] flex-col items-center justify-center">
           <Switch>
             <Match when={recommendedStories().length === 0}>
               <p class="animate-pulse">
@@ -651,20 +813,20 @@ export const SearchPage = () => {
                 <span class="inline">
                   <select
                     id="stories"
-                    class="form-select text-zinc-600 p-1 border border-stone-300 w-fit bg-hn"
+                    class="form-select w-fit border border-stone-300 bg-hn p-1 text-zinc-600"
                     onChange={(e) => {
                       setRecommendType(e.currentTarget.value);
                     }}
                     value={recommendType()}
                   >
-                    <option value={"semantic"}>Semantic</option>
-                    <option value={"fulltext"}>Splade</option>
+                    <option value="semantic">Semantic</option>
+                    <option value="fulltext">Fulltext</option>
                   </select>
                 </span>{" "}
                 for {recommendDateRangeDisplay()} to:{" "}
                 <span class="font-semibold">{positiveRecStory()?.title}</span>
               </p>
-              <div class="pt-2 border-t">
+              <div class="border-t pt-2">
                 <For each={recommendedStories()}>
                   {(story) => (
                     <Story
@@ -693,7 +855,7 @@ export const SearchPage = () => {
             <label class="block text-lg">Rating: {rating().rating}</label>
             <input
               type="range"
-              class="text-[#ff6600] min-w-full accent-[#ff6600] focus:outline-none"
+              class="min-w-full text-[#ff6600] accent-[#ff6600] focus:outline-none"
               value={rating().rating}
               min="0"
               max="10"
@@ -710,11 +872,11 @@ export const SearchPage = () => {
             </div>
           </div>
           <div>
-            <label class="block text-lg mt-2">
+            <label class="mt-2 block text-lg">
               Optional Explanation of Rating (contact info if willing):
             </label>
             <textarea
-              class="p-1 mt-2 min-w-full rounded-md border border-stone-300 active:border-stone-500 focus-within:border-stone-500"
+              class="mt-2 min-w-full rounded-md border border-stone-300 p-1 focus-within:border-stone-500 active:border-stone-500"
               placeholder="Enter written feedback about search ..."
               value={rating().note}
               onInput={(e) => {
@@ -725,9 +887,9 @@ export const SearchPage = () => {
               }}
             />
           </div>
-          <div class="mx-auto flex w-fit flex-col space-y-3 pt-2 mt-3">
+          <div class="mx-auto mt-3 flex w-fit flex-col space-y-3 pt-2">
             <button
-              class="text-zinc-600 p-1 border border-stone-300 w-fit bg-hn flex items-center gap-x-1 hover:border-stone-900 hover:text-zinc-900"
+              class="flex w-fit items-center gap-x-1 border border-stone-300 bg-hn p-1 text-zinc-600 hover:border-stone-900 hover:text-zinc-900"
               onClick={() => {
                 rateQuery();
                 setOpenRateQueryModal(false);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { subDays, subHours } from "date-fns";
 
 export const indirectHasOwnProperty = (obj: unknown, prop: string): boolean => {
@@ -91,44 +92,103 @@ export function isTimeRange(value: object): value is TimeRange {
       (value as TimeRange).lte)) as boolean;
 }
 
-export const getFilters = (
-  selectedStoryType: string | null,
-  dateRange: TimeRange | null,
-  authorNames: string[] | null
-) => {
-  const filters = [];
-  if (selectedStoryType && selectedStoryType !== "all") {
-    filters.push({
+export interface GetFiltersParams {
+  dateRange: TimeRange | null;
+  selectedStoryType: string | null;
+  matchAnyAuthorNames: string[] | null;
+  matchNoneAuthorNames: string[] | null;
+  gtStoryPoints: number | null;
+  ltStoryPoints: number | null;
+  gtStoryComments: number | null;
+  ltStoryComments: number | null;
+  storyID: string | null;
+}
+
+export const getFilters = ({
+  dateRange,
+  selectedStoryType,
+  matchAnyAuthorNames,
+  matchNoneAuthorNames,
+  gtStoryPoints,
+  ltStoryPoints,
+  gtStoryComments,
+  ltStoryComments,
+  storyID,
+}: GetFiltersParams) => {
+  const mustFilters = [];
+  if (
+    matchAnyAuthorNames &&
+    matchAnyAuthorNames.length > 0 &&
+    matchAnyAuthorNames[0] !== ""
+  ) {
+    mustFilters.push({
       field: "tag_set",
-      match: [selectedStoryType.toLowerCase()],
+      match_any: matchAnyAuthorNames,
+    });
+  }
+  if (dateRange) {
+    mustFilters.push({
+      field: "time_stamp",
+      date_range: dateRange,
+    });
+  }
+  if (selectedStoryType && selectedStoryType !== "all") {
+    mustFilters.push({
+      field: "tag_set",
+      match_all: [selectedStoryType.toLowerCase()],
     });
   }
 
-  let shouldFilters = [];
-  if (authorNames && authorNames.length > 0) {
-    shouldFilters.push(
-      ...authorNames
-        .filter((name) => name !== "")
-        .map((name) => ({
-          field: "tag_set",
-          match: [name.toLowerCase()],
-        }))
-    );
+  const mustNotFilters = [];
+  if (
+    matchNoneAuthorNames &&
+    matchNoneAuthorNames.length > 0 &&
+    matchNoneAuthorNames[0] !== ""
+  ) {
+    mustNotFilters.push({
+      field: "tag_set",
+      match_any: matchNoneAuthorNames,
+    });
   }
 
-  if (dateRange) {
-    if (dateRange.gt) {
-      filters.push({
-        field: "time_stamp",
-        date_range: dateRange,
-      });
+  if (gtStoryPoints !== null || ltStoryPoints !== null) {
+    const range: any = {};
+    if (gtStoryPoints !== null) {
+      range["gt"] = gtStoryPoints;
     }
+    if (ltStoryPoints !== null) {
+      range["lt"] = ltStoryPoints;
+    }
+    mustFilters.push({
+      field: "num_value",
+      range,
+    });
+  }
+
+  if (gtStoryComments !== null || ltStoryComments !== null) {
+    const range: any = {};
+    if (gtStoryComments !== null) {
+      range["gt"] = gtStoryComments;
+    }
+    if (ltStoryComments !== null) {
+      range["lt"] = ltStoryComments;
+    }
+    mustFilters.push({
+      field: "metadata.descendants",
+      range,
+    });
+  }
+
+  if (storyID) {
+    mustFilters.push({
+      tracking_ids: [storyID],
+    });
   }
 
   return {
     jsonb_prefilter: false,
-    must: filters,
-    should: shouldFilters,
+    must: mustFilters.length > 0 ? mustFilters : undefined,
+    must_not: mustNotFilters.length > 0 ? mustNotFilters : undefined,
   };
 };
 
@@ -167,7 +227,7 @@ export interface DateRangeFilter {
 
 export interface AnalyticsFilter {
   date_range: DateRangeFilter;
-  search_method?: "full_text" | "hybrid" | "semantic" | "bm25";
+  search_method?: "fulltext" | "hybrid" | "semantic" | "bm25";
   search_type?:
     | "search"
     | "autocomplete"
@@ -202,7 +262,7 @@ export interface SearchQueryEvent {
   id: string;
   search_type: string;
   query: string;
-  request_params: string;
+  request_params: Record<string, unknown> | null;
   latency: number;
   top_score: number;
   results: string[];
@@ -374,4 +434,13 @@ export interface SlimCollection {
 export interface ChunkBookmarksDTO {
   chunk_uuid: string;
   slim_collections: [SlimCollection];
+}
+
+export interface UsageDatapoint {
+  requests: number;
+  time_stamp: string;
+}
+
+export interface UsageGraphResponse {
+  usage_points: UsageDatapoint[];
 }

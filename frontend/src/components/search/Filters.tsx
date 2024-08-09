@@ -1,5 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { FaSolidChevronDown } from "solid-icons/fa";
-import { Accessor, createEffect, createSignal, onMount, Setter, Show } from "solid-js";
+import {
+  Accessor,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Setter,
+  Show,
+} from "solid-js";
 import { SetStoreFunction } from "solid-js/store";
 import { SearchOptions } from "../../types";
 import DatePicker, { PickerValue } from "@rnwonder/solid-date-picker";
@@ -17,16 +28,25 @@ export interface FiltersProps {
   latency: Accessor<number | null>;
   setSearchOptions: SetStoreFunction<SearchOptions>;
   searchOptions: SearchOptions;
-  setAuthorNames: Setter<string[]>;
-  authorNames: Accessor<string[]>;
+  setMatchAnyAuthorNames: Setter<string[]>;
+  setMatchNoneAuthorNames: Setter<string[]>;
+  matchAnyAuthorNames: Accessor<string[]>;
+  matchNoneAuthorNames: Accessor<string[]>;
+  setPopularityFilters: Setter<any>;
+  popularityFilters: Accessor<any>;
 }
 
 export default function Filters(props: FiltersProps) {
-  const [open, setOpen] = createSignal(false);
+  const [openAuthorFilterModal, setOpenAuthorFilterModal] = createSignal(false);
+  const [openPopularityFilterModal, setOpenPopularityFilterModal] =
+    createSignal(false);
+  const [openAdvancedOptions, setOpenAdvancedOptions] = createSignal(false);
   const [rangeDate, setRangeDate] = createSignal<PickerValue>({
     label: "",
     value: {},
   });
+  const [currentAnyAuthor, setCurrentAnyAuthor] = createSignal("");
+  const [currentNoneAuthor, setCurrentNoneAuthor] = createSignal("");
 
   onMount(() => {
     if (props.dateRange().startsWith("{")) {
@@ -34,36 +54,83 @@ export default function Filters(props: FiltersProps) {
       setRangeDate({
         label: "Custom Range",
         value: {
-          start: new Date(date_range.gt).toISOString(),
-          end: new Date(date_range.lt).toISOString(),
+          start: date_range.gt
+            ? new Date(date_range.gt).toISOString()
+            : undefined,
+          end: date_range.lt
+            ? new Date(date_range.lt).toISOString()
+            : undefined,
         },
       });
     }
+  });
+
+  createEffect(() => {
+    const onEnterCallback = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        if (document.activeElement?.id === "matchAnyAuthors") {
+          const curAnyAuthor = currentAnyAuthor();
+          if (!curAnyAuthor) return;
+
+          props.setMatchAnyAuthorNames((prev) => [
+            ...prev.filter((a) => a !== curAnyAuthor),
+            curAnyAuthor,
+          ]);
+          setCurrentAnyAuthor("");
+        } else if (document.activeElement?.id === "matchNoneAuthorNames") {
+          const curNoneAuthor = currentNoneAuthor();
+          if (!curNoneAuthor) return;
+
+          props.setMatchNoneAuthorNames((prev) => [
+            ...prev.filter((a) => a !== curNoneAuthor),
+            curNoneAuthor,
+          ]);
+          setCurrentNoneAuthor("");
+        }
+      }
+    };
+    window.addEventListener("keydown", onEnterCallback);
+
+    onCleanup(() => {
+      window.removeEventListener("keydown", onEnterCallback);
+    });
   });
 
   createEffect(() => {
     if (!props.dateRange().startsWith("{")) {
       setRangeDate({
         label: "",
-        value: {
-        },
+        value: {},
       });
     }
   });
 
   createEffect(() => {
-    if (rangeDate().value.start) {
+    if (rangeDate().value.start || rangeDate().value.end) {
       props.setDateRange(
         JSON.stringify({
-          gt: rangeDate().value.start?.toString(),
-          lt: rangeDate().value.end?.toString(),
-        })
+          gt:
+            rangeDate().value.start != ""
+              ? rangeDate().value.start?.toString()
+              : undefined,
+          lt:
+            rangeDate().value.end != ""
+              ? rangeDate().value.end?.toString()
+              : undefined,
+        }),
       );
     }
   });
+
+  const combinedAuthorFiltersLength = createMemo(() => {
+    return (
+      props.matchAnyAuthorNames().length + props.matchNoneAuthorNames().length
+    );
+  });
+
   return (
-    <div class="p-2 flex items-center gap-2">
-      <div class="flex flex-wrap gap-2 text-black items-center">
+    <div class="flex items-center gap-2 p-2">
+      <div class="flex flex-wrap items-center gap-2 text-black">
         <span>Search</span>
         <div>
           <label for="stories" class="sr-only">
@@ -71,7 +138,7 @@ export default function Filters(props: FiltersProps) {
           </label>
           <select
             id="stories"
-            class="form-select text-zinc-600 p-1 border border-stone-300 w-fit bg-hn"
+            class="form-select w-fit border border-stone-300 bg-hn p-1 text-zinc-600"
             onChange={(e) => props.setSelectedStoryType(e.currentTarget.value)}
             value={props.selectedStoryType()}
           >
@@ -93,7 +160,7 @@ export default function Filters(props: FiltersProps) {
           </label>
           <select
             id="popularity"
-            class="form-select text-zinc-600 p-1 border border-stone-300 bg-hn"
+            class="form-select border border-stone-300 bg-hn p-1 text-zinc-600"
             onChange={(e) => props.setSortBy(e.currentTarget.value)}
             value={props.sortBy()}
           >
@@ -108,12 +175,52 @@ export default function Filters(props: FiltersProps) {
             Date Range
           </label>
           <DatePicker
+            hideTopArea
+            calendarJSX={() => {
+              return (
+                <div class="flex flex-col gap-2 p-2">
+                  <span>From:</span>
+                  <input
+                    class="form-input border border-stone-300 bg-hn p-1 text-zinc-600"
+                    type="date"
+                    value={rangeDate().value.start?.replace(
+                      "T00:00:00.000Z",
+                      "",
+                    )}
+                    onInput={(e) => {
+                      setRangeDate({
+                        ...rangeDate(),
+                        value: {
+                          ...rangeDate().value,
+                          start: e.currentTarget.value,
+                        },
+                      });
+                    }}
+                  />
+                  <span>To:</span>
+                  <input
+                    class="form-input border border-stone-300 bg-hn p-1 text-zinc-600"
+                    type="date"
+                    value={rangeDate().value.end?.replace("T00:00:00.000Z", "")}
+                    onInput={(e) => {
+                      setRangeDate({
+                        ...rangeDate(),
+                        value: {
+                          ...rangeDate().value,
+                          end: e.currentTarget.value,
+                        },
+                      });
+                    }}
+                  />
+                </div>
+              );
+            }}
             value={rangeDate}
             setValue={setRangeDate}
             renderInput={({ showDate }) => (
               <select
                 id="date-range"
-                class="form-select text-zinc-600 p-1 border border-stone-300 bg-hn"
+                class="form-select border border-stone-300 bg-hn p-1 text-zinc-600"
                 onClick={(e) => {
                   e.preventDefault();
                   if (e.currentTarget.value === "custom") {
@@ -133,17 +240,31 @@ export default function Filters(props: FiltersProps) {
                 <option value="pastWeek">Past Week</option>
                 <option value="pastMonth">Past Month</option>
                 <option value="pastYear">Past Year</option>
-                <option value="custom">{rangeDate().value.start ? rangeDate().value.start?.replace("T07:00:00.000Z", "") + " - " + rangeDate().value.end?.replace("T07:00:00.000Z", "") : "Custom Range"}</option>
+                <option value="custom">
+                  {rangeDate().value.start || rangeDate().value.end
+                    ? (!rangeDate().value.end ? "After " : "") +
+                      (rangeDate().value.start
+                        ? rangeDate().value.start?.replace("T00:00:00.000Z", "")
+                        : "") +
+                      (rangeDate().value.start && rangeDate().value.end
+                        ? " - "
+                        : "") +
+                      (!rangeDate().value.start ? "Before " : "") +
+                      (rangeDate().value.end
+                        ? rangeDate().value.end?.replace("T00:00:00.000Z", "")
+                        : "")
+                    : "Custom"}
+                </option>
               </select>
             )}
             type="range"
           />
         </div>
-        <span>with</span>
+        <span>using</span>
         <div>
           <select
             id="stories"
-            class="form-select text-zinc-600 p-1 border border-stone-300 w-fit bg-hn"
+            class="form-select w-fit border border-stone-300 bg-hn p-1 text-zinc-600"
             onChange={(e) => {
               props.setSearchType(e.currentTarget.value);
               props.setSearchOptions("rerankType", undefined);
@@ -153,26 +274,280 @@ export default function Filters(props: FiltersProps) {
             <option selected value={"hybrid"}>
               Hybrid
             </option>
-            <option value={"semantic"}>Semantic</option>
-            <option value={"fulltext"}>Splade</option>
-            <option value={"bm25"}>BM25</option>
+            <option value="semantic">Semantic</option>
+            <option value="fulltext">Fulltext</option>
+            <option value="bm25">BM25</option>
+            <option value="autocomplete">Autocomplete</option>
           </select>
         </div>
         <div class="relative">
+          <div class="flex items-center gap-1">
+            <div
+              classList={{
+                "rounded-full w-3 h-3 text-[8px] text-center leading-[10px] pt-[1px]":
+                  true,
+                "bg-[#ff6600] text-white": combinedAuthorFiltersLength() > 0,
+                "bg-stone-200 text-neutral-500":
+                  combinedAuthorFiltersLength() === 0,
+              }}
+            >
+              {combinedAuthorFiltersLength()}
+            </div>
+            <button
+              onClick={() => setOpenAuthorFilterModal((prev) => !prev)}
+              class="form-select flex w-fit items-center gap-1 bg-hn text-xs"
+            >
+              Author Filters
+              <FaSolidChevronDown size={10} />
+            </button>
+          </div>
+
+          <Show when={openAuthorFilterModal()}>
+            <div
+              class="z-5 fixed left-0 top-1 min-h-screen w-full"
+              onClick={() => setOpenAuthorFilterModal(false)}
+            />
+            <div class="absolute right-0 top-[1.85rem] z-10 flex flex-col gap-2 border border-stone-300 bg-hn p-2">
+              <label for="matchAnyAuthors">Any of the following authors:</label>
+              <div class="flex items-center gap-2 border border-stone-300 bg-hn px-1 py-0.5 focus:border-black">
+                <input
+                  id="matchAnyAuthors"
+                  class="form-input border-none bg-transparent text-zinc-600 focus:border-none focus:outline-none focus:ring-0"
+                  type="text"
+                  placeholder="Author Name"
+                  value={currentAnyAuthor()}
+                  onInput={(e) => setCurrentAnyAuthor(e.currentTarget.value)}
+                  onFocus={(e) => {
+                    e.currentTarget.parentElement!.style.border =
+                      "1px solid black";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.parentElement!.style.border =
+                      "1px solid #d2d6dc";
+                  }}
+                />
+                <button
+                  class="rounded-full border border-stone-300 bg-hn px-2 py-0.5 hover:border-black"
+                  onClick={() => {
+                    const curAnyAuthor = currentAnyAuthor();
+                    if (!curAnyAuthor) return;
+                    props.setMatchAnyAuthorNames((prev) => [
+                      ...prev.filter((a) => a !== curAnyAuthor),
+                      curAnyAuthor,
+                    ]);
+                    setCurrentAnyAuthor("");
+                  }}
+                >
+                  +
+                </button>
+              </div>
+              <For each={props.matchAnyAuthorNames()}>
+                {(author) => (
+                  <div class="flex items-center gap-2">
+                    <p>{author}</p>
+                    <button
+                      class="rounded-full border border-stone-300 bg-hn px-2 py-0.5 hover:border-black"
+                      onClick={() => {
+                        props.setMatchAnyAuthorNames((prev) =>
+                          prev.filter((a) => a !== author),
+                        );
+                      }}
+                    >
+                      -
+                    </button>
+                  </div>
+                )}
+              </For>
+              <div class="h-0.5 bg-stone-300" />
+              <label for="matchNoneAuthorNames">
+                None of the following authors:
+              </label>
+              <div class="flex items-center gap-2 border border-stone-300 bg-hn px-1 py-0.5 focus:border-black">
+                <input
+                  id="matchNoneAuthorNames"
+                  class="form-input border-none bg-transparent text-zinc-600 focus:border-none focus:outline-none focus:ring-0"
+                  type="text"
+                  placeholder="Author Name"
+                  value={currentNoneAuthor()}
+                  onInput={(e) => setCurrentNoneAuthor(e.currentTarget.value)}
+                  onFocus={(e) => {
+                    e.currentTarget.parentElement!.style.border =
+                      "1px solid black";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.parentElement!.style.border =
+                      "1px solid #d2d6dc";
+                  }}
+                />
+                <button
+                  class="rounded-full border border-stone-300 bg-hn px-2 py-0.5 hover:border-black"
+                  onClick={() => {
+                    const curNoneAuthor = currentNoneAuthor();
+                    if (!curNoneAuthor) return;
+                    props.setMatchNoneAuthorNames((prev) => [
+                      ...prev.filter((a) => a !== curNoneAuthor),
+                      curNoneAuthor,
+                    ]);
+                    setCurrentNoneAuthor("");
+                  }}
+                >
+                  +
+                </button>
+              </div>
+              <For each={props.matchNoneAuthorNames()}>
+                {(author) => (
+                  <div class="flex items-center gap-2">
+                    <p>{author}</p>
+                    <button
+                      class="rounded-full border border-stone-300 bg-hn px-2 py-[1px] hover:border-black"
+                      onClick={() => {
+                        props.setMatchNoneAuthorNames((prev) =>
+                          prev.filter((a) => a !== author),
+                        );
+                      }}
+                    >
+                      -
+                    </button>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+        <div class="relative">
+          <div class="flex items-center gap-1">
+            <div
+              classList={{
+                "rounded-full w-3 h-3 text-[8px] text-center leading-[10px] pt-[1px]":
+                  true,
+                "bg-[#ff6600] text-white":
+                  Object.keys(props.popularityFilters()).length > 0,
+                "bg-stone-200 text-neutral-500":
+                  Object.keys(props.popularityFilters()).length === 0,
+              }}
+            >
+              {Object.keys(props.popularityFilters()).length}
+            </div>
+            <button
+              onClick={() => setOpenPopularityFilterModal((prev) => !prev)}
+              class="form-select flex w-fit items-center gap-1 bg-hn text-xs"
+            >
+              Other Filters
+              <FaSolidChevronDown size={10} />
+            </button>
+          </div>
+          <Show when={openPopularityFilterModal()}>
+            <div
+              class="z-5 fixed left-0 top-1 min-h-screen w-full"
+              onClick={() => setOpenPopularityFilterModal(false)}
+            />
+            <div class="absolute right-0 top-[1.85rem] z-10 flex min-w-[100px] flex-col gap-2 border border-stone-300 bg-hn p-2">
+              <label for="gtPoints">&gt; points:</label>
+              <input
+                id="gtPoints"
+                class="w-16 rounded border border-neutral-400 p-0.5 text-black"
+                type="number"
+                step="any"
+                placeholder="0"
+                value={props.popularityFilters()["num_value"]?.gt}
+                onChange={(e) => {
+                  props.setPopularityFilters({
+                    ...props.popularityFilters(),
+                    num_value: {
+                      ...props.popularityFilters()["num_value"],
+                      gt: e.target.valueAsNumber,
+                    },
+                  });
+                }}
+              />
+              <label for="lePoints">&lt; points:</label>
+              <input
+                id="lePoints"
+                class="w-16 rounded border border-neutral-400 p-0.5 text-black"
+                type="number"
+                step="any"
+                placeholder="0"
+                value={props.popularityFilters()["num_value"]?.lt}
+                onChange={(e) => {
+                  props.setPopularityFilters({
+                    ...props.popularityFilters(),
+                    num_value: {
+                      ...props.popularityFilters()["num_value"],
+                      lt: e.target.valueAsNumber,
+                    },
+                  });
+                }}
+              />
+              <div class="h-0.5 bg-stone-300" />
+              <label for="gtComments">&gt; descendants:</label>
+              <input
+                id="gtComments"
+                class="w-16 rounded border border-neutral-400 p-0.5 text-black"
+                type="number"
+                step="any"
+                placeholder="0"
+                value={props.popularityFilters()["num_comments"]?.gt}
+                onChange={(e) => {
+                  props.setPopularityFilters({
+                    ...props.popularityFilters(),
+                    num_comments: {
+                      ...props.popularityFilters()["num_comments"],
+                      gt: e.target.valueAsNumber,
+                    },
+                  });
+                }}
+              />
+              <label for="leComments">&lt; descendants:</label>
+              <input
+                id="leComments"
+                class="w-16 rounded border border-neutral-400 p-0.5 text-black"
+                type="number"
+                step="any"
+                placeholder="0"
+                value={props.popularityFilters()["num_comments"]?.lt}
+                onChange={(e) => {
+                  props.setPopularityFilters({
+                    ...props.popularityFilters(),
+                    num_comments: {
+                      ...props.popularityFilters()["num_comments"],
+                      lt: e.target.valueAsNumber,
+                    },
+                  });
+                }}
+              />
+              <div class="h-0.5 bg-stone-300" />
+              <label for="hasID">has id:</label>
+              <input
+                id="hasID"
+                class="w-16 rounded border border-neutral-400 p-0.5 text-black"
+                type="text"
+                placeholder="ID"
+                value={props.popularityFilters()["storyID"] ?? ""}
+                onChange={(e) => {
+                  props.setPopularityFilters({
+                    ...props.popularityFilters(),
+                    storyID: e.target.value,
+                  });
+                }}
+              />
+            </div>
+          </Show>
+        </div>
+        <div class="relative">
           <button
-            onClick={() => setOpen(!open())}
-            class="form-select text-xs w-fit bg-hn flex items-center gap-1"
+            onClick={() => setOpenAdvancedOptions((prev) => !prev)}
+            class="form-select flex w-fit items-center gap-1 bg-hn text-xs"
           >
             Advanced
             <FaSolidChevronDown size={10} />
           </button>
-          <Show when={open()}>
+          <Show when={openAdvancedOptions()}>
             <div
-              class="fixed top-1 left-0 min-h-screen w-full z-5"
-              onClick={() => setOpen(false)}
+              class="z-5 fixed left-0 top-1 min-h-screen w-full"
+              onClick={() => setOpenAdvancedOptions(false)}
             />
-            <div class="absolute bg-hn flex flex-col gap-2 border border-stone-300 top-[1.85rem] p-2 z-10 right-0">
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+            <div class="absolute right-0 top-[1.85rem] z-10 flex flex-col gap-2 border border-stone-300 bg-hn p-2">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Score Threshold (0.0 to 1.0):</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -182,12 +557,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "scoreThreshold",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Prefetch Amount:</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -197,20 +572,20 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "prefetchAmount",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Rerank type:</label>
                 <select
-                  class="rounded border border-neutral-400 p-1 bg-white text-black"
+                  class="rounded border border-neutral-400 bg-white p-1 text-black"
                   onChange={(e) => {
                     const newType = e.currentTarget.value;
                     props.setSearchOptions(
                       "rerankType",
-                      newType === "none" ? undefined : newType
+                      newType === "none" ? undefined : newType,
                     );
                   }}
                   value={props.searchOptions.rerankType ?? "none"}
@@ -220,7 +595,7 @@ export default function Filters(props: FiltersProps) {
                   <option>Full Text</option>
                 </select>
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Page size</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -232,23 +607,7 @@ export default function Filters(props: FiltersProps) {
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
-                <label>Authors (separated by ',')</label>
-                <input
-                  class="w-20 rounded border border-neutral-400 p-0.5 text-black"
-                  type="text"
-                  step="any"
-                  value={props.authorNames().join(",")}
-                  onChange={(e) => {
-                    if (e.target.value.length > 0) {
-                      props.setAuthorNames(e.target.value.split(","));
-                    } else {
-                      props.setAuthorNames([]);
-                    }
-                  }}
-                />
-              </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Highlight Delimiters (seperated by ',')</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -258,12 +617,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "highlightDelimiters",
-                      e.target.value.split(",")
+                      e.target.value.split(","),
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Highlight Threshold</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -273,12 +632,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "highlightThreshold",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Highlight Max Length</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -288,12 +647,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "highlightMaxLength",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Highlight Max Number</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -303,12 +662,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "highlightMaxNum",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Highlight Results (Latency Penalty)</label>
                 <input
                   class="h-4 w-4"
@@ -317,12 +676,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "highlightResults",
-                      e.target.checked
+                      e.target.checked,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Use Quote Negated Terms (Latency Penalty)</label>
                 <input
                   class="h-4 w-4"
@@ -331,12 +690,12 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "useQuoteNegatedTerms",
-                      e.target.checked
+                      e.target.checked,
                     );
                   }}
                 />
               </div>
-              <div class="flex items-center justify-between space-x-2 p-1 whitespace-nowrap">
+              <div class="flex items-center justify-between space-x-2 whitespace-nowrap p-1">
                 <label>Recency bias (0.0) to (1.0)</label>
                 <input
                   class="w-16 rounded border border-neutral-400 p-0.5 text-black"
@@ -346,7 +705,7 @@ export default function Filters(props: FiltersProps) {
                   onChange={(e) => {
                     props.setSearchOptions(
                       "recencyBias",
-                      e.target.valueAsNumber
+                      e.target.valueAsNumber,
                     );
                   }}
                 />

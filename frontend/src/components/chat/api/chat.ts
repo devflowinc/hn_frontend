@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Topic } from "../../../types";
 
 const apiHost = import.meta.env.VITE_TRIEVE_API_URL as string;
@@ -83,7 +84,7 @@ export const createTopic = async (newMessageContent: string, id: string) => {
 
 export const fetchCompletion = async (
   params: any,
-  abortSignal: AbortSignal
+  abortSignal: AbortSignal,
 ) => {
   const response = await fetch(`${apiHost}/message`, {
     method: params.regenerateLastMessage ? "DELETE" : "POST",
@@ -101,7 +102,7 @@ export const fetchCompletion = async (
 
 export const fetchMessages = async (
   topicId: string,
-  abortSignal: AbortSignal
+  abortSignal: AbortSignal,
 ) => {
   const response = await fetch(`${apiHost}/messages/${topicId}`, {
     method: "GET",

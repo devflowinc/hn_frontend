@@ -1,3 +1,4 @@
+/* eslint-disable solid/reactivity */
 import { Show } from "solid-js";
 import { formatDistanceToNowStrict } from "date-fns";
 
@@ -42,37 +43,43 @@ export const Story = (props: {
   sendCTR: () => void;
   onClickRecommend: () => void;
 }) => {
-  const articleLink = "https://news.ycombinator.com/item?id=" + props.story.id;
+  const articleLink =
+    "https://news.ycombinator.com/item?id=" +
+    props.story.id.replaceAll("<mark><b>", "").replaceAll("</b></mark>", "");
 
   return (
-    <div class="px-2 rounded-md pb-3">
-      <div class="flex items-center flex-wrap">
+    <div class="rounded-md px-2 pb-3">
+      <div class="flex flex-wrap items-center">
         <Show when={props.story.title_html}>
           <div
-            class="w-full mb-[-6px] text-[#828282] text-wrap break-word leading-[14pt]"
+            class="break-word mb-[-6px] w-full text-wrap leading-[14pt] text-[#828282]"
             onClick={() => props.sendCTR()}
           >
             <a
               href={articleLink}
-              class="mr-1 text-[11pt] sm:text-[10pt] text-black text-wrap"
+              class="mr-1 text-wrap text-[11pt] text-black sm:text-[10pt]"
               // eslint-disable-next-line solid/no-innerhtml
               innerHTML={props.story.title_html}
             />
             <Show when={props.story.url}>
               <a
-                href={props.story.url}
-                class="hover:underline text-[8pt] text-[#828282] break-all"
+                href={props.story.url
+                  .replaceAll("<mark><b>", "")
+                  .replaceAll("</b></mark>", "")}
+                class="break-all text-[8pt] text-[#828282] hover:underline"
               >
                 ({formatLink(props.story.url)})
               </a>
             </Show>
           </div>
         </Show>
-        <div class="w-full items-center text-[9pt] sm:text-[7pt] text-[#828282] pt-1">
+        <div class="w-full items-center pt-1 text-[9pt] text-[#828282] sm:text-[7pt]">
           <span>
             {props.story.points} points by{" "}
             <a
-              href={`https://news.ycombinator.com/user?id=${props.story.user}`}
+              href={`https://news.ycombinator.com/user?id=${props.story.user
+                .replaceAll("<mark><b>", "")
+                .replaceAll("</b></mark>", "")}`}
               class="hover:underline"
             >
               {props.story.user}
@@ -105,7 +112,7 @@ export const Story = (props: {
           <Show when={props.story.type != "comment"}>
             <span class="px-1">|</span>
             <span
-              class="cursor-pointer hover:underline font-semibold"
+              class="cursor-pointer font-semibold hover:underline"
               onClick={() => props.onClickRecommend()}
             >
               Get Recommendations
@@ -116,7 +123,9 @@ export const Story = (props: {
             <span>
               on:{" "}
               <a
-                href={`https://news.ycombinator.com/item?id=${props.story.parent_id}`}
+                href={`https://news.ycombinator.com/item?id=${props.story.parent_id
+                  ?.replaceAll("<mark><b>", "")
+                  .replaceAll("</b></mark>", "")}`}
                 class="hover:underline"
               >
                 {props.story.parent_title}
@@ -125,7 +134,7 @@ export const Story = (props: {
           </Show>
         </div>
         <Show when={props.story.body_html}>
-          <div class="w-full text-[#828282] text-wrap break-word leading-[normal] pt-1">
+          <div class="break-word w-full text-wrap pt-1 leading-[normal] text-[#828282]">
             <div
               classList={{
                 "mr-1 text-[10pt] sm:text-[10pt] text-wrap": true,

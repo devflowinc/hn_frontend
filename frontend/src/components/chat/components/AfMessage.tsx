@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
 import {
   BiRegularClipboard,
   BiRegularEdit,
@@ -49,10 +47,10 @@ export const AfMessage = (props: AfMessageProps) => {
   // Used to syncrhonize the response height with the citations height
   // CSS is not enough
   const [leftColumnRef, setLeftColumnRef] = createSignal<HTMLElement | null>(
-    null
+    null,
   );
   const [rightColumnRef, setRightColumnRef] = createSignal<HTMLElement | null>(
-    null
+    null,
   );
 
   const [screenWidth, setScreenWidth] = createSignal(window.innerWidth);
@@ -109,7 +107,7 @@ export const AfMessage = (props: AfMessageProps) => {
             return `<span>[<button onclick='document.getElementById("doc_${curOrder}${match[0]}").scrollIntoView({"behavior": "smooth", "block": "center"});' style='color: #3b82f6; text-decoration: underline;'>${content}</button></span>`;
           }
           return `[${content}]`;
-        }
+        },
       );
     } else if (props.content.length > 25) {
       return {
@@ -153,7 +151,7 @@ export const AfMessage = (props: AfMessageProps) => {
     for (const chunk of chunksReceived) {
       if (!metadata().includes(chunk)) {
         // the linter does not understand that the chunk can sometimes be undefined or null
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+
         if (!chunk) return;
         setMetadata((prev) => [...prev, chunk]);
       }
@@ -318,7 +316,7 @@ export const AfMessage = (props: AfMessageProps) => {
                                 },
                                 (err) => {
                                   console.error("failed to copy", err);
-                                }
+                                },
                               );
                             }}
                           >

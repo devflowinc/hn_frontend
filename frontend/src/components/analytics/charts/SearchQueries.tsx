@@ -1,23 +1,32 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  JSX,
+  Match,
+  Show,
+  Switch,
+} from "solid-js";
 import { PaginationButtons } from "../PaginationButtons";
 import { ChartCard } from "./ChartCard";
-import { Select } from "../Select";
 import { usePagination } from "../usePagination";
 import {
   AnalyticsFilter,
   SortBy,
   SortOrder,
   SearchQueryEvent,
+  AnalyticsParams,
 } from "../../../types";
 import { getSearchQueries } from "../api/analytics";
-import { displaySearchMethod } from "./QueryCounts";
+import { AiFillCaretDown } from "solid-icons/ai";
+import { Table, Tr, Th, Td } from "../Table";
+import { format } from "date-fns";
+import { parseCustomDateString } from "./LatencyGraph";
+import { FullScreenModal } from "../../FullScreenModal";
 
 interface SearchQueriesProps {
   params: { filter: AnalyticsFilter };
 }
-
-const ALL_SORT_BY: SortBy[] = ["created_at", "latency", "top_score"];
-const ALL_SORT_ORDER: SortOrder[] = ["asc", "desc"];
 
 export const SearchQueries = (props: SearchQueriesProps) => {
   const pages = usePagination();
@@ -25,54 +34,53 @@ export const SearchQueries = (props: SearchQueriesProps) => {
   const [sortBy, setSortBy] = createSignal<SortBy>("created_at");
   const [sortOrder, setSortOrder] = createSignal<SortOrder>("desc");
   const [searchQueries, setSearchQueries] = createSignal<SearchQueryEvent[]>(
-    []
+    [],
   );
 
-  createEffect(async () => {
+  createEffect(() => {
     const curPage = pages.page();
 
-    const results = await getSearchQueries(
-      props.params.filter,
-      sortBy(),
-      sortOrder(),
-      curPage
+    getSearchQueries(props.params.filter, sortBy(), sortOrder(), curPage).then(
+      (results) => {
+        if (results.length === 0) {
+          pages.setMaxPageDiscovered(curPage);
+        }
+        setSearchQueries(results);
+      },
     );
-
-    if (results.length === 0) {
-      pages.setMaxPageDiscovered(curPage);
-    }
-    setSearchQueries(results);
   });
 
+  interface SortableHeaderProps {
+    children: JSX.Element;
+    sortBy: "created_at" | "latency" | "top_score";
+  }
+  const SortableHeader = (props: SortableHeaderProps) => {
+    return (
+      <button
+        onClick={() => {
+          if (sortBy() === props.sortBy) {
+            setSortOrder(sortOrder() === "desc" ? "asc" : "desc");
+          } else {
+            setSortBy(props.sortBy);
+          }
+        }}
+        class="flex items-center gap-2"
+      >
+        <div>{props.children}</div>
+        <Switch>
+          <Match when={sortBy() === props.sortBy && sortOrder() === "desc"}>
+            <AiFillCaretDown />
+          </Match>
+          <Match when={sortBy() === props.sortBy && sortOrder() === "asc"}>
+            <AiFillCaretDown class="rotate-180 transform" />
+          </Match>
+        </Switch>
+      </button>
+    );
+  };
+
   return (
-    <ChartCard
-      title="Search Queries"
-      subtitle={"All Search Queries"}
-      class="flex flex-col px-4"
-      width={2}
-      controller={
-        <div class="flex gap-2">
-          <Select
-            class="min-w-[80px] min-h-7 bg-neutral-100/90"
-            options={ALL_SORT_BY.map((e) => formatSortBy(e))}
-            selected={formatSortBy(sortBy())}
-            onSelected={(e) =>
-              setSortBy(ALL_SORT_BY.find((s) => formatSortBy(s) === e)!)
-            }
-          />
-          <Select
-            class="min-w-[80px] min-h-7 bg-neutral-100/90"
-            options={ALL_SORT_ORDER.map((e) => formatSortOrder(e))}
-            selected={formatSortOrder(sortOrder())}
-            onSelected={(e) =>
-              setSortOrder(
-                ALL_SORT_ORDER.find((s) => formatSortOrder(s) === e)!
-              )
-            }
-          />
-        </div>
-      }
-    >
+    <ChartCard title="All Search Queries" class="flex flex-col px-4" width={2}>
       <div>
         <Show when={searchQueries().length === 0}>
           <div class="py-8 text-center opacity-80">No Data.</div>
@@ -82,32 +90,46 @@ export const SearchQueries = (props: SearchQueriesProps) => {
           when={searchQueries()}
         >
           {(data) => (
-            <Show when={data().length > 0}>
-              <div class="pt-2">
-                <table class="w-full">
-                  <thead>
-                    <tr>
-                      <th class="text-left font-semibold">Message</th>
-                      <th class="text-right font-semibold">Search Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={data()}>
-                      {(search_query_event) => {
-                        return (
-                          <SearchQueryEventCard
-                            search_query_event={search_query_event}
-                          />
-                        );
-                      }}
-                    </For>
-                  </tbody>
-                </table>
-                <div class="flex justify-end pt-4">
-                  <PaginationButtons size={18} pages={pages} />
-                </div>
+            <div classList={{ "border border-neutral-300": data().length > 0 }}>
+              <Table
+                fixed
+                headers={
+                  <Tr>
+                    <Th class="w-[20vw]">Query</Th>
+                    <Th class="w-[10vw]">
+                      <SortableHeader sortBy="created_at">
+                        Searched At
+                      </SortableHeader>
+                    </Th>
+                    <Show
+                      when={
+                        typeof props.params.filter.search_method === "undefined"
+                      }
+                    >
+                      <Th class="w-[10vw]">Search Method</Th>
+                    </Show>
+                    <Th class="w-[10vw] text-right">
+                      <SortableHeader sortBy="latency">Latency</SortableHeader>
+                    </Th>
+                    <Th class="w-[15vw] text-right">
+                      <SortableHeader sortBy="top_score">
+                        Top Score
+                      </SortableHeader>
+                    </Th>
+                    <Th class="w-[10vw]">View Params and Results</Th>
+                  </Tr>
+                }
+                fallback={<div class="py-8 text-center">No Data</div>}
+                data={data()}
+              >
+                {(row) => (
+                  <SearchRow event={row} filter={props.params.filter} />
+                )}
+              </Table>
+              <div class="flex justify-end px-2 py-1">
+                <PaginationButtons size={14} pages={pages} />
               </div>
-            </Show>
+            </div>
           )}
         </Show>
       </div>
@@ -115,42 +137,110 @@ export const SearchQueries = (props: SearchQueriesProps) => {
   );
 };
 
-interface QueryCardProps {
-  search_query_event: SearchQueryEvent;
+interface SearchRowProps {
+  event: SearchQueryEvent;
+  filter: AnalyticsParams["filter"];
 }
-const SearchQueryEventCard = (props: QueryCardProps) => {
+const SearchRow = (props: SearchRowProps) => {
+  const [openParamResults, setOpenParamResults] = createSignal(false);
+  const searchMethod = createMemo(() => {
+    return typeof (props.event.request_params ?? {})["search_type"] === "string"
+      ? formatSearchMethod(
+          (props.event.request_params ?? {})["search_type"] as string,
+        )
+      : "All";
+  });
   return (
-    <tr>
-      <td class="w-full max-w-0 truncate">{props.search_query_event.query}</td>
-      <td class="text-right min-w-[200px]">
-        {displaySearchMethod(
-          JSON.parse(props.search_query_event.request_params)["search_type"]
-        )}
-      </td>
-    </tr>
+    <>
+      <Tr>
+        <Td class="truncate">{props.event.query}</Td>
+        <Td>
+          {format(
+            parseCustomDateString(props.event.created_at),
+            "M/d/yy h:mm a",
+          )}
+        </Td>
+        <Show when={typeof props.filter.search_method === "undefined"}>
+          <Td>{searchMethod()}</Td>
+        </Show>
+        <Td class="text-left">{props.event.latency} ms</Td>
+        <Td class="truncate text-left">
+          {props.event.top_score
+            ? props.event.top_score.toFixed(2)
+            : "N/A due to sort"}
+        </Td>
+        <Td class="truncate">
+          <button
+            class="text-[#ff6600]"
+            onClick={() => setOpenParamResults(true)}
+          >
+            View
+          </button>
+        </Td>
+      </Tr>
+      <FullScreenModal show={openParamResults} setShow={setOpenParamResults}>
+        <div class="flex w-[60vw] flex-col gap-4">
+          <div class="flex space-x-2">
+            <h2 class="text-xl font-bold">Request Params</h2>
+            <button
+              class="text-sm text-[#ff6600]"
+              onClick={(e) => {
+                navigator.clipboard.writeText(
+                  JSON.stringify(props.event.request_params, null, 2),
+                );
+
+                const target = e.target as HTMLButtonElement;
+                target.textContent = "Copied";
+                setTimeout(() => {
+                  target.textContent = "Copy";
+                }, 500);
+              }}
+            >
+              Copy
+            </button>
+          </div>
+          <pre class="text-sm">
+            {JSON.stringify(props.event.request_params, null, 2)}
+          </pre>
+          <div class="flex space-x-2">
+            <h2 class="text-xl font-bold">Results</h2>
+            <button
+              class="text-sm text-[#ff6600]"
+              onClick={(e) => {
+                navigator.clipboard.writeText(
+                  JSON.stringify(props.event.request_params, null, 2),
+                );
+
+                const target = e.target as HTMLButtonElement;
+                target.textContent = "Copied";
+                setTimeout(() => {
+                  target.textContent = "Copy";
+                }, 500);
+              }}
+            >
+              Copy
+            </button>
+          </div>
+          <pre class="text-sm">
+            {JSON.stringify(props.event.results, null, 2)}
+          </pre>
+        </div>
+      </FullScreenModal>
+    </>
   );
 };
 
-const formatSortBy = (sortBy: SortBy) => {
-  switch (sortBy) {
-    case "created_at":
-      return "Created At";
-    case "latency":
-      return "Latency";
-    case "top_score":
-      return "Top Score";
+const formatSearchMethod = (searchMethod: string) => {
+  switch (searchMethod) {
+    case "hybrid":
+      return "Hybrid";
+    case "fulltext":
+      return "Fulltext";
+    case "semantic":
+      return "Semantic";
+    case "bm25":
+      return "BM25";
     default:
-      return sortBy;
-  }
-};
-
-const formatSortOrder = (sortOrder: SortOrder) => {
-  switch (sortOrder) {
-    case "asc":
-      return "Ascending";
-    case "desc":
-      return "Descending";
-    default:
-      return sortOrder;
+      return "All";
   }
 };
