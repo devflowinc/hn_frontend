@@ -698,6 +698,13 @@ export const SearchPage = () => {
       }
     });
   };
+  
+  const storyTypePlurals = {
+    "comment": "comments",
+    "poll": "polls",
+    "all": "items",
+    "job": "jobs"
+  }
 
   return (
     <>
@@ -739,8 +746,8 @@ export const SearchPage = () => {
                 </div>
               </Match>
               <Match when={!loading()}>
-                <div class="flex items-center justify-center py-2">
-                  <span class="text-xl">No stories found</span>
+                <div class="flex justify-center items-center py-2">
+                  <span class="text-xl">No {storyTypePlurals[selectedStoryType()] || "stories"} found</span>
                 </div>
               </Match>
             </Switch>
